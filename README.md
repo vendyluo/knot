@@ -6,6 +6,13 @@ Knot is an open-source, self-hosted memory layer for LINE. Add your own LINE Off
 
 This repository deliberately provides code and a small, deterministic interaction model rather than a hosted product. Fork it, change the commands, add a UI, or connect AI later if you actually need it.
 
+## Try the test account
+
+Add the Knot test Official Account on LINE by searching for **`@964vpcbg`**, then send `@memo 說明` to see the available commands.
+
+> [!WARNING]
+> This public test account runs in the maintainer's Cloudflare account. Chat workspaces are separated, but the maintainer controls the backend and storage. Don't send private, sensitive, or irreplaceable content. Knot doesn't currently add application-level encryption, and test data may be deleted at any time. For real use, deploy your own LINE Official Account and Cloudflare resources.
+
 ## What it does
 
 ```text
