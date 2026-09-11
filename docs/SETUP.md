@@ -189,12 +189,12 @@ npx wrangler d1 execute knot --remote --command \
 1. Send the OA a disposable test image.
 2. Wait a few seconds for its R2 snapshot.
 3. Use LINE's Reply action on that image.
-4. Send `@memo` as the reply.
+4. Send `@memo 測試圖片` as the reply. The description is optional; plain `@memo` still works.
 
 Expected reply:
 
 ```text
-Knot shows a green “已永久保存” Flex card identifying the item as 圖片記事 #<id>.
+Knot shows a green “已永久保存” Flex card titled `測試圖片` and identifies it as 圖片記事 #<id>.
 ```
 
 Expected storage:
@@ -220,7 +220,7 @@ Send:
 @memo 列表
 ```
 
-The two saved notes should appear in a compact Flex card. The media row should say `圖片`, not the generic `媒體`. Delete the media note using the ID returned earlier:
+The two saved notes should appear in a compact Flex card. The media row should use `測試圖片` as its title and say `圖片記事 #<id>` below it, rather than the generic `媒體`. Delete the media note using the ID returned earlier:
 
 First retrieve it:
 

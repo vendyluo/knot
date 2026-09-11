@@ -1,5 +1,5 @@
 export type Command =
-  | { type: "save-quoted" }
+  | { type: "save-quoted"; description?: string }
   | { type: "save-text"; text: string }
   | { type: "save-conversation"; count: number }
   | { type: "list" }
@@ -9,6 +9,7 @@ export type Command =
   | { type: "invalid"; reason: string };
 
 const MAX_CONVERSATION_MESSAGES = 50;
+const MAX_DESCRIPTION_LENGTH = 200;
 
 export function parseCommand(text: string): Command | null {
   const input = text.trim();
@@ -39,5 +40,9 @@ export function parseCommand(text: string): Command | null {
   const retrieveMatch = argument.match(/^(?:get|retrieve|取出)\s+(\d+)$/i);
   if (retrieveMatch) return { type: "retrieve", id: Number(retrieveMatch[1]) };
 
-  return { type: "invalid", reason: "看不懂這個指令" };
+  const description = argument.replace(/^(?:save|存)\s+/i, "").trim();
+  if (Array.from(description).length > MAX_DESCRIPTION_LENGTH) {
+    return { type: "invalid", reason: `描述最多 ${MAX_DESCRIPTION_LENGTH} 個字` };
+  }
+  return { type: "save-quoted", description };
 }

@@ -4,10 +4,12 @@ import type { NoteDetail } from "./storage";
 export interface NoteSummaryView {
   id: number;
   kind: string;
+  description: string | null;
   item_count: number;
   preview: string | null;
   primary_kind: string | null;
   attachment_count: number;
+  file_name: string | null;
 }
 
 const KNOT_GREEN = "#168C63";
@@ -70,9 +72,17 @@ function brandHeader(status: string): Record<string, unknown>[] {
   ];
 }
 
-export function savedMessage(id: number, kind: string, itemCount = 1): LineReplyMessage {
+export function savedMessage(
+  id: number,
+  kind: string,
+  options: { itemCount?: number; description?: string } = {},
+): LineReplyMessage {
   const display = messageKind(kind);
-  const description = kind === "conversation" ? `${itemCount} 則訊息已打成一個結` : `${display.label}已從短期快照移至永久保存`;
+  const detail = options.description
+    ? `${display.label}記事 #${id} · 已移至永久保存`
+    : kind === "conversation"
+      ? `${options.itemCount ?? 1} 則訊息已打成一個結`
+      : `${display.label}已從短期快照移至永久保存`;
 
   return {
     type: "flex",
@@ -106,8 +116,16 @@ export function savedMessage(id: number, kind: string, itemCount = 1): LineReply
               layout: "vertical",
               spacing: "sm",
               contents: [
-                { type: "text", text: `${display.label}記事 #${id}`, color: INK, weight: "bold", size: "lg" },
-                { type: "text", text: description, color: MUTED, size: "sm", wrap: true },
+                {
+                  type: "text",
+                  text: options.description ?? `${display.label}記事 #${id}`,
+                  color: INK,
+                  weight: "bold",
+                  size: "lg",
+                  wrap: true,
+                  maxLines: 2,
+                },
+                { type: "text", text: detail, color: MUTED, size: "sm", wrap: true },
               ],
             },
           ],
@@ -127,8 +145,10 @@ export function savedMessage(id: number, kind: string, itemCount = 1): LineReply
 }
 
 function noteTitle(note: NoteSummaryView): string {
+  if (note.description) return note.description.replace(/\s+/g, " ");
   if (note.kind === "conversation") return `對話 · ${note.item_count} 則`;
   if (note.preview) return note.preview.replace(/\s+/g, " ");
+  if (note.file_name) return note.file_name;
   const display = messageKind(note.primary_kind);
   return note.attachment_count > 1 ? `${display.label} · ${note.attachment_count} 個附件` : display.label;
 }
@@ -151,7 +171,7 @@ export function notesMessage(notes: NoteSummaryView[]): LineReplyMessage {
           spacing: "xs",
           contents: [
             { type: "text", text: noteTitle(note), color: INK, size: "sm", weight: "bold", wrap: true, maxLines: 2 },
-            { type: "text", text: `記事 #${note.id}`, color: MUTED, size: "xs" },
+            { type: "text", text: `${display.label}記事 #${note.id}`, color: MUTED, size: "xs" },
           ],
         },
       ],
@@ -196,7 +216,7 @@ export function notesMessage(notes: NoteSummaryView[]): LineReplyMessage {
 
 export function helpMessage(): LineReplyMessage {
   const commands = [
-    ["回覆訊息 + @memo", "保存文字、圖片、影片、音訊或檔案"],
+    ["回覆訊息 + @memo 描述", "保存文字、圖片、影片、音訊或檔案；描述可省略"],
     ["@memo 文字 …", "直接寫下一則文字記事"],
     ["@memo 對話 10", "保存最近一段對話，最多 50 則"],
     ["@memo 列表", "查看這個聊天室最近的記事"],
@@ -264,7 +284,15 @@ export function retrievedMessage(note: NoteDetail, downloadUrls: string[]): Line
 
   const contents: Record<string, unknown>[] = [
     ...brandHeader(`記事 #${note.id}`),
-    { type: "text", text: "把這個結取回來", color: INK, weight: "bold", size: "xl", wrap: true },
+    {
+      type: "text",
+      text: note.description ?? "把這個結取回來",
+      color: INK,
+      weight: "bold",
+      size: "xl",
+      wrap: true,
+      maxLines: 3,
+    },
   ];
   if (visibleText) {
     contents.push({

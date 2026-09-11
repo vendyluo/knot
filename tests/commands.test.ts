@@ -10,6 +10,17 @@ describe("parseCommand", () => {
     expect(parseCommand(" @memo ")).toEqual({ type: "save-quoted" });
   });
 
+  it("uses otherwise unrecognized text as a quoted-message description", () => {
+    expect(parseCommand("@memo 北海道飯店候選")).toEqual({
+      type: "save-quoted",
+      description: "北海道飯店候選",
+    });
+    expect(parseCommand("#memo 存 露營裝備清單")).toEqual({
+      type: "save-quoted",
+      description: "露營裝備清單",
+    });
+  });
+
   it("preserves multi-line text after an explicit text command", () => {
     expect(parseCommand("@memo 文字 10/3 入住\n記得帶護照")).toEqual({
       type: "save-text",
@@ -30,6 +41,13 @@ describe("parseCommand", () => {
     expect(parseCommand("@memo 對話 51")).toEqual({
       type: "invalid",
       reason: "對話則數必須介於 1–50",
+    });
+  });
+
+  it("rejects descriptions longer than 200 Unicode characters", () => {
+    expect(parseCommand(`@memo ${"結".repeat(201)}`)).toEqual({
+      type: "invalid",
+      reason: "描述最多 200 個字",
     });
   });
 });

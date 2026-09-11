@@ -31,7 +31,7 @@ Commands are intentionally explicit and contain no AI classification:
 
 | Command | Result |
 | --- | --- |
-| Reply to a message with `@memo` | Save that text, image, video, audio, or file |
+| Reply to a message with `@memo [描述]` | Save that text, image, video, audio, or file with an optional description |
 | `@memo 文字 <內容>` | Save new text directly |
 | `@memo 對話 [則數]` | Save the latest messages in this chat; defaults to 10, maximum 50 |
 | `@memo 列表` | List the 10 most recent notes in this chat |
@@ -44,6 +44,8 @@ Commands are intentionally explicit and contain no AI classification:
 Personal chats and groups use the same code. Their data stays separated by LINE's source identity (`userId`, `groupId`, or legacy `roomId`). A note created in one chat can't be listed or deleted from another.
 
 Knot stays silent during ordinary conversation, especially in groups. When somebody explicitly uses a command, it responds with compact LINE Flex cards that distinguish text, images, videos, audio, files, and conversations. Success cards offer quick actions for recent notes and help; destructive deletion still requires typing the note ID.
+
+Descriptions are intentionally lightweight. Reply to media with `@memo 北海道飯店候選`, and that description becomes the note's title. Recent-note previews prefer the description, then saved text, the original file name, and finally the media type. Descriptions are limited to 200 characters.
 
 Retrieval doesn't make the R2 bucket public. Each attachment button contains an HMAC-signed URL bound to one attachment and expires after 15 minutes. Treat the URL as temporarily shareable: anyone who receives it before expiry can download that attachment.
 

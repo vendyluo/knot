@@ -17,10 +17,12 @@ describe("LINE message presentation", () => {
       {
         id: 9,
         kind: "message",
+        description: null,
         item_count: 1,
         preview: null,
         primary_kind: "file",
         attachment_count: 1,
+        file_name: null,
       },
     ]);
 
@@ -50,6 +52,7 @@ describe("LINE message presentation", () => {
       {
         id: 23,
         kind: "message",
+        description: "北海道住宿候選",
         items: [{ kind: "image", text: "北海道飯店", position: 0 }],
         attachments: [{ id: 4, r2_key: "permanent/image", content_type: "image/jpeg", file_name: null }],
       },
@@ -59,9 +62,32 @@ describe("LINE message presentation", () => {
     expect(message.type).toBe("flex");
     if (message.type !== "flex") return;
     const payload = JSON.stringify(message.contents);
+    expect(payload).toContain("北海道住宿候選");
     expect(payload).toContain("北海道飯店");
     expect(payload).toContain("下載圖片");
     expect(payload).toContain("15 分鐘後失效");
     expect(payload).toContain("https://example.com/download/4?signed=yes");
+  });
+
+  it("uses descriptions before text and file names in recent-note previews", () => {
+    const message = notesMessage([
+      {
+        id: 31,
+        kind: "message",
+        description: "結婚影片完整版",
+        item_count: 1,
+        preview: "lower-priority text",
+        primary_kind: "video",
+        attachment_count: 1,
+        file_name: "lower-priority.mp4",
+      },
+    ]);
+
+    expect(message.type).toBe("flex");
+    if (message.type !== "flex") return;
+    const payload = JSON.stringify(message.contents);
+    expect(payload).toContain("結婚影片完整版");
+    expect(payload).not.toContain("lower-priority");
+    expect(payload).toContain("影片記事 #31");
   });
 });

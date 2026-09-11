@@ -49,7 +49,7 @@ async function handleCommand(env: Env, event: LineEvent, ownSnapshot: Snapshot, 
       await replyTo(env, event, textMessage(`${command.reason}。`, true));
       return;
     case "save-text": {
-      const id = await createNote(env, workspace, "text", creator, [ownSnapshot], command.text);
+      const id = await createNote(env, workspace, "text", creator, [ownSnapshot], { textOverride: command.text });
       await replyTo(env, event, savedMessage(id, "text"));
       return;
     }
@@ -71,8 +71,10 @@ async function handleCommand(env: Env, event: LineEvent, ownSnapshot: Snapshot, 
         await replyTo(env, event, textMessage("附件還在安全下載中，請稍等幾秒再輸入一次 @memo。"));
         return;
       }
-      const id = await createNote(env, workspace, "message", creator, [quoted]);
-      await replyTo(env, event, savedMessage(id, snapshotKind(quoted)));
+      const id = await createNote(env, workspace, "message", creator, [quoted], {
+        description: command.description,
+      });
+      await replyTo(env, event, savedMessage(id, snapshotKind(quoted), { description: command.description }));
       return;
     }
     case "save-conversation": {
@@ -86,7 +88,7 @@ async function handleCommand(env: Env, event: LineEvent, ownSnapshot: Snapshot, 
         return;
       }
       const id = await createNote(env, workspace, "conversation", creator, snapshots);
-      await replyTo(env, event, savedMessage(id, "conversation", snapshots.length));
+      await replyTo(env, event, savedMessage(id, "conversation", { itemCount: snapshots.length }));
       return;
     }
     case "list": {

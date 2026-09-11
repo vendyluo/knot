@@ -145,13 +145,13 @@ export async function createNote(
   kind: "message" | "text" | "conversation",
   creator: string | null,
   snapshots: Snapshot[],
-  textOverride?: string,
+  options: { textOverride?: string; description?: string } = {},
 ): Promise<number> {
   const createdAt = Math.floor(Date.now() / 1000);
   const noteResult = await env.DB.prepare(
-    "INSERT INTO notes (workspace_key, kind, created_by, created_at) VALUES (?, ?, ?, ?)",
+    "INSERT INTO notes (workspace_key, kind, description, created_by, created_at) VALUES (?, ?, ?, ?, ?)",
   )
-    .bind(workspace, kind, creator, createdAt)
+    .bind(workspace, kind, options.description ?? null, creator, createdAt)
     .run();
   const noteId = Number(noteResult.meta.last_row_id);
   const createdKeys: string[] = [];
@@ -175,7 +175,7 @@ export async function createNote(
           snapshot.source_user_id,
           position,
           event.message?.type ?? "unknown",
-          position === 0 && textOverride !== undefined ? textOverride : event.message?.text ?? null,
+          position === 0 && options.textOverride !== undefined ? options.textOverride : event.message?.text ?? null,
           eventKey,
           Math.floor(event.timestamp / 1000),
         )
@@ -204,16 +204,19 @@ export async function createNote(
 export interface NoteSummary {
   id: number;
   kind: string;
+  description: string | null;
   created_at: number;
   item_count: number;
   preview: string | null;
   primary_kind: string | null;
   attachment_count: number;
+  file_name: string | null;
 }
 
 export interface NoteDetail {
   id: number;
   kind: string;
+  description: string | null;
   items: Array<{ kind: string; text: string | null; position: number }>;
   attachments: Array<{
     id: number;
@@ -231,11 +234,15 @@ export interface StoredAttachment {
 
 export async function listNotes(env: Env, workspace: string): Promise<NoteSummary[]> {
   const result = await env.DB.prepare(
-    `SELECT n.id, n.kind, n.created_at, COUNT(DISTINCT i.id) AS item_count,
+    `SELECT n.id, n.kind, n.description, n.created_at, COUNT(DISTINCT i.id) AS item_count,
             MIN(CASE WHEN i.text IS NOT NULL THEN substr(i.text, 1, 60) END) AS preview,
             (SELECT first_item.kind FROM note_items first_item
              WHERE first_item.note_id = n.id ORDER BY first_item.position LIMIT 1) AS primary_kind,
-            COUNT(a.id) AS attachment_count
+            COUNT(a.id) AS attachment_count,
+            (SELECT first_attachment.file_name FROM attachments first_attachment
+             JOIN note_items attachment_item ON attachment_item.id = first_attachment.note_item_id
+             WHERE attachment_item.note_id = n.id AND first_attachment.file_name IS NOT NULL
+             ORDER BY attachment_item.position, first_attachment.id LIMIT 1) AS file_name
      FROM notes n
      LEFT JOIN note_items i ON i.note_id = n.id
      LEFT JOIN attachments a ON a.note_item_id = i.id
@@ -250,9 +257,9 @@ export async function listNotes(env: Env, workspace: string): Promise<NoteSummar
 }
 
 export async function getNote(env: Env, workspace: string, noteId: number): Promise<NoteDetail | null> {
-  const note = await env.DB.prepare("SELECT id, kind FROM notes WHERE id = ? AND workspace_key = ?")
+  const note = await env.DB.prepare("SELECT id, kind, description FROM notes WHERE id = ? AND workspace_key = ?")
     .bind(noteId, workspace)
-    .first<{ id: number; kind: string }>();
+    .first<{ id: number; kind: string; description: string | null }>();
   if (!note) return null;
 
   const [items, attachments] = await Promise.all([
