@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "knot-line-memory",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-11",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "knot",
+      "database_id": "f79302aa-4650-4ac1-81f7-c039f280a1e2"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "knot"
+    }
+  ]
+}
