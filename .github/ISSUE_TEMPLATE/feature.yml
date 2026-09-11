@@ -1,0 +1,67 @@
+name: Feature proposal
+description: Propose a focused improvement to Knot
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Knot is a small, self-hosted, deterministic memory layer for LINE. Strong proposals preserve explicit retention, workspace isolation, low LINE OA usage, and a simple Cloudflare-first deployment.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or user outcome
+      description: Describe the real situation this should improve rather than only naming a solution.
+      placeholder: People need to recover a saved file from LINE without making their R2 bucket public.
+    validations:
+      required: true
+
+  - type: textarea
+    id: flow
+    attributes:
+      label: Proposed LINE interaction
+      description: Show the commands, replies, buttons, or screens from the user's perspective.
+      placeholder: |
+        User: `@memo ...`
+        Knot: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: storage
+    attributes:
+      label: Data and retention impact
+      description: What would be stored in D1 or R2? Is it temporary or permanent, and how is deletion handled?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: messaging
+    attributes:
+      label: LINE messaging impact
+      description: Delayed or proactive messages require Push API and may consume the OA allowance.
+      options:
+        - Reply API only
+        - Requires Push API
+        - No outgoing LINE message
+        - Unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include any simpler command, documentation, or existing LINE feature that could solve the same problem.
+
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Project principles
+      options:
+        - label: Permanent retention remains an explicit user action.
+          required: true
+        - label: Personal and group workspaces remain isolated.
+          required: true
+        - label: The core feature can work without mandatory AI services.
+          required: true

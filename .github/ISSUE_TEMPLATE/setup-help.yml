@@ -1,0 +1,72 @@
+name: Setup help
+description: Ask for help deploying Knot or connecting a LINE Official Account
+title: "[Setup]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the [setup and verification guide](https://github.com/vendyluo/knot/blob/main/docs/SETUP.md). Never paste your LINE channel secret, access token, Cloudflare credentials, LINE IDs, or signed download URLs.
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where are you blocked?
+      options:
+        - Installing dependencies or running local checks
+        - Creating or migrating D1
+        - Creating R2 or its lifecycle rule
+        - Setting Worker secrets
+        - Deploying the Worker
+        - Verifying the LINE webhook
+        - Receiving commands in a one-to-one chat
+        - Inviting the Official Account to a group
+        - Saving or retrieving media
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: completed
+    attributes:
+      label: Steps already completed
+      description: List the relevant setup-guide sections you completed and their results.
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Failing command or action
+      description: Include the exact command or LINE action. Redact identifiers and URLs containing signatures.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Sanitized output
+      description: Paste the complete error after removing all credentials, LINE IDs, private messages, R2 keys, and active download URLs.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: macOS 26, Node.js 22.x, Wrangler 4.131.0
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety and troubleshooting checks
+      options:
+        - label: I followed the setup guide through the step where the failure occurs.
+          required: true
+        - label: I confirmed LINE and Cloudflare do not report an active incident.
+          required: true
+        - label: I removed all credentials, identifiers, private content, and active download URLs.
+          required: true

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Setup and verification guide
+    url: https://github.com/vendyluo/knot/blob/main/docs/SETUP.md
+    about: Follow the complete deployment checklist before opening a setup issue.
+  - name: LINE Messaging API status
+    url: https://api.line-status.info/
+    about: Check whether LINE is currently experiencing an API incident.
+  - name: Cloudflare status
+    url: https://www.cloudflarestatus.com/
+    about: Check whether Workers, D1, or R2 is currently experiencing an incident.

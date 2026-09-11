@@ -1,0 +1,98 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Knot
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Knot. Please remove LINE IDs, access tokens, channel secrets, signed download URLs, and personal chat content from everything you share.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - LINE command or Flex Message
+        - Webhook delivery or signature verification
+        - Media snapshot or permanent storage
+        - Note retrieval or download link
+        - D1 data or workspace isolation
+        - Cloudflare deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: chat
+    attributes:
+      label: Chat context
+      description: Where did the issue occur?
+      options:
+        - One-to-one chat with the Official Account
+        - LINE group chat
+        - Both
+        - Not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact command and message type, but replace private content with harmless examples.
+      placeholder: |
+        1. Send a test video to the Official Account.
+        2. Reply to the video with `@memo`.
+        3. Run `@memo 取出 12`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exact visible error when possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Do not include secrets, tokens, LINE user/group IDs, personal messages, R2 keys, or active signed URLs.
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Knot version or commit
+      placeholder: e.g. 3582fef or main as of 2026-09-11
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Wrangler version and relevant device/LINE app information.
+      placeholder: Wrangler 4.131.0, LINE iOS 16.x
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I reproduced this with the current `main` branch.
+          required: true
+        - label: I removed credentials, identifiers, private content, and active download URLs.
+          required: true
+        - label: I checked existing issues for the same problem.
+          required: true
