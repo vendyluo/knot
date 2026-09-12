@@ -1,5 +1,7 @@
 import type { LineReplyMessage } from "./types";
 import type { NoteDetail } from "./storage";
+import type { Reminder } from "./reminders";
+import { reminderTime } from "./notify-command";
 
 export interface NoteSummaryView {
   id: number;
@@ -138,6 +140,13 @@ export function savedMessage(
           paddingAll: "12px",
           contents: [{ type: "text", text: "只有你明確保存的內容會永久留下", color: MUTED, size: "xs", wrap: true }],
         },
+        {
+          type: "button",
+          style: "primary",
+          height: "sm",
+          color: KNOT_GREEN,
+          action: { type: "message", label: "查看這則", text: `@memo 取出 ${id}` },
+        },
       ],
     }),
     quickReply,
@@ -163,6 +172,7 @@ export function notesMessage(notes: NoteSummaryView[]): LineReplyMessage {
       spacing: "md",
       paddingTop: index === 0 ? "0px" : "12px",
       paddingBottom: "12px",
+      action: { type: "message", label: "查看記事", text: `@memo 取出 ${note.id}` },
       contents: [
         { type: "text", text: display.icon, color: KNOT_GREEN, size: "lg", flex: 0 },
         {
@@ -174,6 +184,7 @@ export function notesMessage(notes: NoteSummaryView[]): LineReplyMessage {
             { type: "text", text: `${display.label}記事 #${note.id}`, color: MUTED, size: "xs" },
           ],
         },
+        { type: "text", text: "查看 ›", color: KNOT_GREEN, size: "sm", flex: 0 },
       ],
     };
     return index === notes.length - 1
@@ -333,5 +344,56 @@ export function textMessage(text: string, withHelp = false): LineReplyMessage {
           },
         }
       : {}),
+  };
+}
+
+const REMINDER_STATUS: Record<Reminder["status"], string> = {
+  pending: "已設定・待提醒", sending: "發送中／等待重試", accepted: "已送交 LINE（不代表已讀）",
+  cancelled: "已取消", failed: "發送失敗・請洽管理者", expired: "已過期・未發送", unknown: "發送結果未確認",
+};
+
+export function reminderMessage(reminder: Reminder, aiParsed = false): Extract<LineReplyMessage, { type: "flex" }> {
+  const location = reminder.workspace_key.startsWith("user:") ? "這個私人聊天室" : "此群組所有成員可見";
+  const status = REMINDER_STATUS[reminder.status] + (aiParsed ? "（AI 解讀，請核對時間與事項）" : "");
+  const actions = [
+    ...(reminder.status === "pending" ? [{ type: "button", style: "secondary", height: "sm", action: {
+      type: "message", label: "取消提醒", text: `@notify 取消 ${reminder.id}`,
+    } }] : []),
+    { type: "button", style: "link", height: "sm", action: { type: "message", label: "待提醒列表", text: "@notify 列表" } },
+  ];
+  return {
+    type: "flex",
+    altText: `Knot 提醒 #${reminder.id}：${status}`,
+    contents: baseBubble({
+      type: "box", layout: "vertical", paddingAll: "20px", spacing: "md",
+      contents: [
+        ...brandHeader(`提醒 #${reminder.id}`),
+        { type: "text", text: status, color: KNOT_GREEN, weight: "bold", wrap: true },
+        { type: "text", text: reminder.text, color: INK, size: "sm", wrap: true },
+        { type: "text", text: reminderTime(reminder.due_at), color: INK, size: "sm", wrap: true },
+        { type: "text", text: `提醒位置：${location}`, color: MUTED, size: "xs", wrap: true },
+        ...(reminder.last_error ? [{ type: "text", text: `診斷：${reminder.last_error}`, color: MUTED, size: "xs", wrap: true }] : []),
+      ],
+    }, { type: "box", layout: "vertical", paddingAll: "12px", contents: actions }),
+  };
+}
+
+export function reminderListMessage(reminders: Reminder[], offset: number, hasMore: boolean, enabled: boolean): Extract<LineReplyMessage, { type: "flex" }> {
+  const navigation = baseBubble({
+    type: "box", layout: "vertical", paddingAll: "20px", spacing: "md",
+    contents: [
+      ...brandHeader("提醒列表"),
+      { type: "text", text: reminders.length ? `第 ${offset + 1}–${offset + reminders.length} 筆・待提醒優先，其餘為近期紀錄` : "這一頁沒有提醒。", wrap: true, size: "sm" },
+      { type: "text", text: enabled ? "到期 Push 使用 OA 額度；已送交 LINE 不代表送達。" : "管理者已停用提醒，目前不會發送 Push。", wrap: true, size: "xs", color: MUTED },
+    ],
+  }, {
+    type: "box", layout: "vertical", paddingAll: "12px", contents: [
+      ...(hasMore ? [{ type: "button", style: "primary", color: KNOT_GREEN, action: { type: "message", label: "下一頁", text: `@notify 列表 ${offset + 5}` } }] : []),
+      { type: "button", style: "link", action: { type: "message", label: offset ? "回到第一頁" : "提醒說明", text: offset ? "@notify 列表" : "@notify 說明" } },
+    ],
+  });
+  return {
+    type: "flex", altText: `Knot 提醒列表${enabled ? "" : "（已停用發送）"}`,
+    contents: { type: "carousel", contents: [...reminders.map((reminder) => reminderMessage(reminder).contents), navigation] },
   };
 }

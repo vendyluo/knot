@@ -1,4 +1,6 @@
 import { parseCommand } from "./commands";
+import { parseNotifyCommand } from "./notify-command";
+import { handleNotify, runReminders } from "./reminders";
 import { createDownloadUrl, serveDownload } from "./downloads";
 import { getMessageContent, reply, verifySignature } from "./line";
 import { helpMessage, notesMessage, retrievedMessage, savedMessage, textMessage } from "./messages";
@@ -35,6 +37,19 @@ function snapshotKind(snapshot: Snapshot): string {
 async function handleCommand(env: Env, event: LineEvent, ownSnapshot: Snapshot, origin: string): Promise<void> {
   const message = event.message;
   if (!message?.text) return;
+  const notify = parseNotifyCommand(message.text, event.timestamp);
+  if (notify) {
+    let response: LineReplyMessage;
+    try {
+      response = await handleNotify(env, event, notify);
+    } catch {
+      console.error(JSON.stringify({ event: "notify_command_error" }));
+      // A failed DB response does not prove the write failed. Do not tell the user to blindly recreate it.
+      response = textMessage("目前無法確認提醒狀態。請稍後用 @notify 列表 查詢，避免重複設定。");
+    }
+    await replyTo(env, event, response);
+    return;
+  }
   const command = parseCommand(message.text);
   if (!command) return;
 
@@ -141,6 +156,10 @@ async function handleEvent(env: Env, event: LineEvent, ctx: ExecutionContext, or
 }
 
 export default {
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    await runReminders(env);
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const downloadMatch = request.method === "GET" && url.pathname.match(/^\/download\/(\d+)$/);

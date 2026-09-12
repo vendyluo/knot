@@ -3,6 +3,9 @@
   "name": "knot-line-memory",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-11",
+  "vars": { "NOTIFY_ENABLED": "false", "NOTIFY_TIME_PARSER": "rule" },
+  "ai": { "binding": "AI" },
+  "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",

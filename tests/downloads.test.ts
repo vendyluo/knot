@@ -4,6 +4,8 @@ import type { Env } from "../src/types";
 
 function testEnv(): Env {
   return {
+    NOTIFY_ENABLED: "false",
+    NOTIFY_TIME_PARSER: "rule",
     LINE_CHANNEL_SECRET: "download-secret",
     LINE_CHANNEL_ACCESS_TOKEN: "unused",
     DB: {

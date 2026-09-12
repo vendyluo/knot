@@ -1,6 +1,5 @@
-export interface Env {
-  DB: D1Database;
-  BUCKET: R2Bucket;
+export interface Env extends Omit<WorkerBindings, "AI"> {
+  AI?: WorkerBindings["AI"];
   LINE_CHANNEL_SECRET: string;
   LINE_CHANNEL_ACCESS_TOKEN: string;
 }

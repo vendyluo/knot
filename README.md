@@ -52,9 +52,39 @@ Personal chats and groups use the same code. Their data stays separated by LINE'
 
 Knot stays silent during ordinary conversation, especially in groups. When somebody explicitly uses a command, it responds with compact LINE Flex cards that distinguish text, images, videos, audio, files, and conversations. Success cards offer quick actions for recent notes and help; destructive deletion still requires typing the note ID.
 
+Tap any note row marked `查看 ›` in the recent list, or `查看這則` on a success card, to retrieve that note without typing its ID. These actions live in the card rather than the disappearing quick-reply bar. Tapping sends the existing `@memo 取出 <id>` command into the current chat; it uses the same workspace checks as typing the command. If the note has since been deleted, Knot replies that it can't be found.
+
 Descriptions are intentionally lightweight. Reply to media with `@memo 北海道飯店候選`, and that description becomes the note's title. Recent-note previews prefer the description, then saved text, the original file name, and finally the media type. Descriptions are limited to 200 characters.
 
 Retrieval doesn't make the R2 bucket public. Each attachment button contains an HMAC-signed URL bound to one attachment and expires after 15 minutes. Treat the URL as temporarily shareable: anyone who receives it before expiry can download that attachment.
+
+### Optional single reminders
+
+Reminders are **off by default** (`NOTIFY_ENABLED="false"`). After the self-hosting owner applies migrations and explicitly enables them, use:
+
+```text
+@notify 30分鐘後 關烤箱
+@notify 明天 09:00 帶健保卡
+@notify 2026-09-20 18:30 訂餐廳
+@notify 列表
+@notify 取消 42
+@notify 說明
+```
+
+Times use **Asia/Taipei**. A receipt shows the exact date, destination, and a cancel button. Group reminders go to the original group, and any member of that group can cancel them before sending starts. Lists include pending reminders and recent outcomes, five reminders per page. They are live lists: if jobs change state while browsing, return to the first page to refresh.
+
+Creation and management use Reply API; due reminders use **billable Push API**, counted by recipients, including group members. The Worker checks D1 every minute; this is not a precise alarm or guaranteed delivery service. No recurring reminders or external LINE Notify-compatible API is included.
+
+Time parsing is deployer-selectable via `NOTIFY_TIME_PARSER`:
+
+- **`"rule"` (default):** the explicit formats above, with no model calls or AI inference cost.
+- **`"ai"` (opt-in):** rules still run first; unsupported time expressions such as `@notify 後天早上九點 帶健保卡` can fall back to Workers AI. Only the command and reference time are sent to Cloudflare, not chat history, media or LINE identifiers. The saved task is extracted from the original input, not rewritten by the model. Calendar/range/length checks still apply. Failure or timeout creates nothing. Successful AI interpretation creates the reminder directly and asks you to check the date and task on the receipt; cancel and reset if wrong. **AI interpretation is not guaranteed.**
+
+AI uses `@cf/meta/llama-3.3-70b-instruct-fp8-fast`, adds inference latency and may incur Workers AI charges. Changing parser mode does not enable Push: `NOTIFY_ENABLED` is a separate switch. See [parser configuration and privacy](docs/SETUP.md#choose-rule-or-ai-time-parsing). AI integration is covered by mocked tests; live model quality and LINE phone rendering have not yet been validated.
+
+Limits: 500 Unicode characters per reminder, 365-day scheduling horizon, 100 active reminders per chat. New commands delayed by more than one hour are rejected; duplicate message IDs return their existing receipt. Network failures and HTTP 5xx retry at most six total attempts within one hour of the due time using the same LINE retry key and payload; HTTP 4xx stops automatic sending. Unsent overdue jobs expire; ambiguous outcomes are marked unconfirmed rather than claiming delivery. Terminal records are pruned after 30 days in bounded batches. Reminders don't create permanent notes.
+
+The configured Cron runs maintenance even while Push is disabled, so disabling reminders does not remove scheduled Worker/D1 usage. Pending jobs can expire while disabled; reenabling can send still-eligible jobs. See [reminder setup, testing, and troubleshooting](docs/SETUP.md#11-optional-reminders) before enabling, especially on a public OA.
 
 ### Why snapshot first?
 
@@ -176,13 +206,15 @@ R2 lifecycle removes the objects. Knot also deletes expired D1 snapshot rows opp
 
 ## Intentional v0.1 boundaries
 
-Knot currently has no hosted UI, login system, reminders, proactive push messages, OCR, transcription, semantic search, or AI. The core stays useful without any model provider or additional infrastructure.
+Knot currently has no hosted UI, login system, recurring reminders, OCR, transcription, semantic search, or AI. Single reminders are an opt-in extension using the owner's Push allowance; the memory core stays useful without enabling them.
+
+The [v1 product and reminder specification (繁體中文)](docs/V1.md) distinguishes implemented workflows from remaining v1 acceptance work. It is not a claim that all v1 features or live deployment checks are complete.
 
 Natural extensions include:
 
 - a read-only Worker/LIFF interface for browsing and searching notes
 - deterministic tags such as `@memo 文字 --tag travel ...`
-- reminder commands backed by Cron Triggers and the owner's push allowance
+- recurring reminders, if single reminders prove useful in actual use
 - OCR or embeddings as optional adapters, not core dependencies
 - configurable snapshot retention and upload-size policies
 

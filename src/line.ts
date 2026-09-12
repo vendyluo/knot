@@ -59,3 +59,26 @@ export async function getMessageContent(
 
   return { body: response.body, contentType: response.headers.get("content-type") };
 }
+
+export async function push(accessToken: string, body: string, retryKey: string): Promise<{
+  accepted: boolean; retryable: boolean; uncertain: boolean; code: string;
+}> {
+  try {
+    const response = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        "X-Line-Retry-Key": retryKey,
+      },
+      body,
+      signal: AbortSignal.timeout(10_000),
+    });
+    const accepted = response.ok || (response.status === 409 && response.headers.has("x-line-accepted-request-id"));
+    await response.body?.cancel();
+    return { accepted, retryable: response.status >= 500, uncertain: response.status >= 500, code: `http_${response.status}` };
+  } catch {
+    // Never log response bodies, destinations, message content or credentials.
+    return { accepted: false, retryable: true, uncertain: true, code: "network_timeout" };
+  }
+}
