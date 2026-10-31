@@ -3,7 +3,10 @@
   "name": "knot-line-memory",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-11",
-  "vars": { "NOTIFY_ENABLED": "false", "NOTIFY_TIME_PARSER": "rule" },
+  "vars": {
+    "NOTIFY_ENABLED": "false", "NOTIFY_TIME_PARSER": "rule",
+    "CONSOLE_TEAM_DOMAIN": "", "CONSOLE_AUD": "", "CONSOLE_OWNER_EMAIL": ""
+  },
   "ai": { "binding": "AI" },
   "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [

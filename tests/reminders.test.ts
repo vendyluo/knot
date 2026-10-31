@@ -3,6 +3,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cancelReminder, claimReminder, handleNotify, runReminders, type Reminder } from "../src/reminders";
 import { parseNotifyCommand } from "../src/notify-command";
+import { getReminderControl, setReminderPaused } from "../src/reminder-control";
 import worker from "../src/index";
 import type { Env, LineEvent, Source } from "../src/types";
 
@@ -18,8 +19,9 @@ beforeAll(async () => {
     ...await mf.getBindings<Pick<Env, "DB" | "BUCKET">>(),
     LINE_CHANNEL_SECRET: "test-secret", LINE_CHANNEL_ACCESS_TOKEN: "test-token", NOTIFY_ENABLED: "true",
     NOTIFY_TIME_PARSER: "rule",
+    CONSOLE_TEAM_DOMAIN: "", CONSOLE_AUD: "", CONSOLE_OWNER_EMAIL: "",
   };
-  for (const name of ["0001_initial.sql", "0002_note_descriptions.sql", "0003_reminders.sql"]) {
+  for (const name of ["0001_initial.sql", "0002_note_descriptions.sql", "0003_reminders.sql", "0004_reminder_control.sql"]) {
     const sql = await readFile(new URL(`../migrations/${name}`, import.meta.url), "utf8");
     await env.DB.batch(sql.split(";").map((statement) => statement.trim()).filter(Boolean).map((statement) => env.DB.prepare(statement)));
   }
@@ -27,6 +29,7 @@ beforeAll(async () => {
 afterAll(async () => { await mf?.dispose(); });
 beforeEach(async () => {
   await env.DB.exec("DELETE FROM reminders");
+  await env.DB.exec("UPDATE reminder_control SET paused = 0, revision = 0, tick_id = NULL, last_tick_started_at = NULL, last_tick_finished_at = NULL, last_tick_status = NULL");
   env.NOTIFY_ENABLED = "true";
   env.NOTIFY_TIME_PARSER = "rule";
   delete env.AI;
@@ -49,6 +52,89 @@ async function get(id: number): Promise<Reminder> {
 }
 
 describe("reminders on real local D1", () => {
+  it("keeps the newest tick heartbeat when an older tick finishes later", async () => {
+    await create();
+    clock += 60_000;
+    let release!: () => void;
+    let entered!: () => void;
+    const sending = new Promise<void>((resolve) => { entered = resolve; });
+    const blocked = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      entered();
+      await blocked;
+      return new Response(null, { status: 200 });
+    });
+    const older = runReminders(env);
+    await sending;
+    clock += 1000;
+    await runReminders(env);
+    const latest = await getReminderControl(env.DB);
+    clock += 1000;
+    release();
+    await older;
+    expect(await getReminderControl(env.DB)).toEqual(latest);
+    expect(latest).toMatchObject({ last_tick_started_at: initialTime / 1000 + 61, last_tick_finished_at: initialTime / 1000 + 61, last_tick_status: "completed" });
+  });
+
+  it("records scheduler-level DB failures without marking the tick complete", async () => {
+    const db = new Proxy(env.DB, { get(target, property) {
+      if (property === "prepare") return (sql: string) => {
+        if (sql.startsWith("DELETE FROM reminders")) throw new Error("synthetic maintenance failure");
+        return target.prepare(sql);
+      };
+      return Reflect.get(target, property);
+    } });
+    await expect(runReminders({ ...env, DB: db })).rejects.toThrow("synthetic maintenance failure");
+    expect(await getReminderControl(env.DB)).toMatchObject({ last_tick_status: "error", last_tick_finished_at: initialTime / 1000 });
+  });
+
+  it("pauses creation and claiming, but keeps cancellation, maintenance and heartbeat working", async () => {
+    const reminder = await create();
+    expect(await setReminderPaused(env.DB, true, 0)).toBe(true);
+    expect(await setReminderPaused(env.DB, false, 0)).toBe(false);
+    expect(await create(event("blocked"))).toBeNull();
+    clock += 60_000;
+    expect(await claimReminder(env.DB, reminder.id, clock / 1000)).toBeNull();
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await runReminders(env);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await getReminderControl(env.DB)).toMatchObject({ paused: 1, last_tick_status: "completed", last_tick_finished_at: clock / 1000 });
+    expect(JSON.stringify(await handleNotify(env, event(), { type: "list", offset: 0 }))).toContain("目前不會發送 Push");
+    expect((await cancelReminder(env.DB, "group:G-one", reminder.id, clock / 1000))?.status).toBe("cancelled");
+    expect(await setReminderPaused(env.DB, false, 1)).toBe(true);
+    clock = initialTime;
+    expect(await create(event("resumed"))).not.toBeNull();
+  });
+
+  it("rejects an insert if paused while AI is interpreting", async () => {
+    env.NOTIFY_TIME_PARSER = "ai";
+    env.AI = { run: vi.fn().mockImplementation(async () => {
+      await setReminderPaused(env.DB, true, 0);
+      return { response: { unambiguous: true, time_prefix: "後天早上九點", due_local: "2026-09-14 09:00" } };
+    }) } as unknown as Ai;
+    const input = event();
+    input.message!.text = "@notify 後天早上九點 合成事項";
+    expect(await create(input)).toBeNull();
+  });
+
+  it("lets a claimed send finish but stops the next claim in the same tick", async () => {
+    const a = await create();
+    const b = await create(event("m2"));
+    clock += 60_000;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      await setReminderPaused(env.DB, true, 0);
+      return new Response(null, { status: 200 });
+    });
+    await runReminders(env);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect((await get(a.id)).status).toBe("accepted");
+    expect((await get(b.id)).status).toBe("pending");
+    clock += 3601_000;
+    await runReminders(env);
+    expect((await get(b.id)).status).toBe("expired");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it("uses AI only when opted in, preserves original task and deduplicates before inference", async () => {
     const run = vi.fn().mockResolvedValue({ response: { unambiguous: true, time_prefix: "後天早上九點", due_local: "2026-09-14 09:00" } });
     env.AI = { run } as unknown as Ai;

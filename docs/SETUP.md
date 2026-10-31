@@ -382,3 +382,49 @@ npx wrangler d1 execute knot --remote --command \
 ```
 
 Use `npx wrangler tail` during a test, or configured Workers Logs. Reminder logs contain internal reminder IDs and error categories (`http_401`, `http_429`, `network_timeout`, etc.), not raw LINE responses or reminder content. If even list queries fail, investigate the migration/binding and D1 availability rather than assuming no reminder was created.
+
+## 12. Owner console
+
+The console lives at `/console` on the same Worker. No separate frontend service, account database or admin password is needed. It is unavailable until all three Access settings are configured. This implementation is locally verified, not deployed to the author's trial Worker.
+
+### Authentication and rollout
+
+1. Before deploying this version, apply all migrations, including `0004_reminder_control.sql`, to the intended database with the owner's authorization. This migration is needed even with console and reminders disabled because the Cron records its checks. Test locally first with `npx wrangler d1 migrations apply knot --local`. Use `--remote` only after approval for the intended database. The initial D1 control is unpaused, preserving existing behavior; `NOTIFY_ENABLED` remains the deployment-level gate.
+2. Configure a Cloudflare Access self-hosted HTTP application for the console's public hostname/path, covering **both `/console` and every `/console/*` route**. Restrict its Allow policy to the deployment owner's email, using a verified identity provider or Access email login. Do not use a public bypass policy. Protect only the console paths on a shared hostname: putting interactive Access in front of `/webhook` blocks LINE; signed `/download/*` links must retain their existing behavior. For a workers.dev deployment, verify the available Access scope does not put a login in front of the entire bot; use a suitable custom hostname/path when needed.
+3. Set these non-secret vars in the deployment configuration; do not commit a real owner's email into public examples:
+
+   ```json
+   "CONSOLE_TEAM_DOMAIN": "https://your-team.cloudflareaccess.com",
+   "CONSOLE_AUD": "your-console-application-audience-tag",
+   "CONSOLE_OWNER_EMAIL": "owner@example.com"
+   ```
+
+   The team domain must have no trailing slash. Copy the audience from that specific Access application. The Worker validates the `Cf-Access-Jwt-Assertion` signature against the team's rotating JWKS, issuer, audience, expiry and owner email on **every** console request. A header merely being present is not sufficient; direct workers.dev/alternate-host requests cannot bypass verification. The app does not accept bearer tokens in URLs or add a local-dev auth bypass.
+4. Deploy only after approval for the Worker and Access changes. Test owner login, a different email, expired sessions, and unauthenticated direct Worker access. Missing settings, invalid tokens or unavailable signing keys deny access before D1 reads. The header's key lookup has a five-second timeout. Access login and the `/cdn-cgi/access/logout` endpoint are provided by Cloudflare, not Knot.
+5. Verify LINE webhook signature checks and attachment downloads remain reachable on their intended paths. No real Access app/policy was configured during local implementation.
+
+See Cloudflare's [JWT validation guide](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/) for the team domain and AUD. The `jose` runtime dependency verifies signatures; Knot does not implement a custom JWT algorithm.
+
+### What controls actually do
+
+- **Pause:** persist `paused=1` in D1. New creation checks it before AI inference and atomically in the INSERT. Each job claim checks it atomically too, including retries within an already-running tick. A job claimed before the pause may still send; this is not a recall operation. Lists, cancellation, note saving and bounded reminder expiry/cleanup continue.
+- **Resume:** persist `paused=0`, only when this deployment has `NOTIFY_ENABLED="true"`. A confirmation warns that due reminders still inside the one-hour window may send and consume LINE allowance. The console does not change deployment vars or AI mode.
+- **Concurrent pages:** control forms carry a revision. Stale forms return a conflict and show current state rather than silently overwriting a newer change. Successful writes redirect to a fresh view; failed/uncertain DB responses never claim success. All writes require a same-origin POST with the expected form content type and a bounded body.
+- **Cancel:** only pending reminders can change to cancelled. Already sending/terminal rows cannot be cancelled; repeated cancellation of an already-cancelled row is safe. The owner operates across all workspaces; ordinary LINE users still have the original workspace-scoped permissions. Use the reminder ID and time from the LINE receipt to identify a row.
+- **No resend:** an unconfirmed result may already have reached LINE. The console intentionally offers no button that creates a fresh retry key or duplicate reminder.
+
+Pause survives redeployments as long as the same D1 is bound. An older Worker version does not know about this control: during rollout overlap or rollback, do not rely on the console pause to stop old code. If an emergency requires stopping old versions, the deployment-level disable procedure still applies, and in-flight sends may finish. Clearing Access settings disables console access, **not** the persisted pause. Reconfigure Access to recover control; don't blindly reset or delete the singleton row.
+
+### Reading status, privacy and costs
+
+- The page separates permission to send from Cron health. It records the latest tick's start, finish and running/completed/error status with a fencing token, so an older tick cannot overwrite a newer tick's result. No heartbeat or more than five minutes since the recorded start shows “排程狀態待確認”. This is a snapshot refreshed by navigation, not an automatic monitor. A DB outage may also prevent recording the failure; check logs when stale.
+- “檢查完成” means that tick finished its processing, not that every reminder succeeded. Inspect individual reminder states. `accepted` means LINE accepted, never proof of delivery or reading.
+- Records are newest-created first, 20 per page, with all/active/issues filters. Pagination is live, so state changes or cleanup may move rows. Returning to the first page refreshes the view. On narrow screens the table scrolls horizontally; a visible hint and keyboard-focusable scroll region expose its remaining columns.
+- The browser receives only reminder ID, private/group type, due time, status, attempts and a fixed safe diagnostic label. No task text, user/group/message IDs, retry keys, raw provider errors or push payloads are embedded in the page. No third-party frontend resources, tracking or browser storage are used. Pages are `no-store`, cannot be framed, and use a nonce-based CSP. Console errors log only a fixed event category, not tokens or request bodies. Access's own identity logs and platform request logs have separate retention policies.
+- This adds D1 control checks and two small heartbeat updates per Cron, plus queries when the owner opens the page. JWT validation fetches Access signing keys. No AI inference or LINE Push is triggered just by viewing the console. Access, Worker and D1 plan limits/costs still apply; the console is not a budget limiter or full audit log.
+
+### Verify before using real data
+
+Local tests use disposable D1, generated RSA tokens and mocked Access JWKS/LINE/AI. They cover denied access, CSRF, safe rendering, pagination, stale controls, pause during AI, pause between claims, cancellation, and overlapping/erroring heartbeat updates. Browser checks use only synthetic records and a local Access test harness; they do not validate an actual Access deployment, live login/logout or LINE billing.
+
+On the intended test deployment, verify pause → blocked new reminder → no new claims → resume, plus a cancelled reminder that never starts sending. Check both desktop and mobile layouts, the confirmation dismiss path, stale forms, empty lists and unavailable storage. Never use real private messages as public demo data.

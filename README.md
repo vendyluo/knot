@@ -86,6 +86,12 @@ Limits: 500 Unicode characters per reminder, 365-day scheduling horizon, 100 act
 
 The configured Cron runs maintenance even while Push is disabled, so disabling reminders does not remove scheduled Worker/D1 usage. Pending jobs can expire while disabled; reenabling can send still-eligible jobs. See [reminder setup, testing, and troubleshooting](docs/SETUP.md#11-optional-reminders) before enabling, especially on a public OA.
 
+### Owner console
+
+`/console` is a small, server-rendered operations page in the same Worker. It shows deployment/AI mode, the latest Cron check, and paginated reminder statuses and safe error categories. It does **not** expose reminder text, LINE identifiers, retry keys or payloads to the browser. The owner can pause/resume reminder creation and job claiming, and cancel pending reminders; there is no manual resend or note browser.
+
+The console is **inaccessible until configured**: Cloudflare Access JWT verification plus a single configured owner email are required on every request. The D1 pause persists across requests and deployments, but cannot override `NOTIFY_ENABLED="false"`. Already claimed sends may finish; expiry/cleanup still run. Apply migration `0004_reminder_control.sql` before deploying this version, even if you do not enable the console. See [console setup and verification](docs/SETUP.md#12-owner-console). This console has been tested locally, not deployed to the author's trial Worker.
+
 ### Why snapshot first?
 
 LINE doesn't guarantee how long user-sent media remains available through the Get content API. Waiting until somebody replies `@memo` can produce `410 Gone`. Knot therefore takes a short-lived R2 snapshot immediately, giving people time to decide what is worth keeping without permanently mirroring the chat.

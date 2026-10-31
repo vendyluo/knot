@@ -1,6 +1,7 @@
 import { parseCommand } from "./commands";
 import { parseNotifyCommand } from "./notify-command";
 import { handleNotify, runReminders } from "./reminders";
+import { handleConsole } from "./console";
 import { createDownloadUrl, serveDownload } from "./downloads";
 import { getMessageContent, reply, verifySignature } from "./line";
 import { helpMessage, notesMessage, retrievedMessage, savedMessage, textMessage } from "./messages";
@@ -162,6 +163,7 @@ export default {
 
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/console" || url.pathname.startsWith("/console/")) return handleConsole(request, env);
     const downloadMatch = request.method === "GET" && url.pathname.match(/^\/download\/(\d+)$/);
     if (downloadMatch) return serveDownload(request, env, Number(downloadMatch[1]));
     if (request.method === "GET" && url.pathname === "/") {

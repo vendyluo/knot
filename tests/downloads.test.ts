@@ -6,6 +6,7 @@ function testEnv(): Env {
   return {
     NOTIFY_ENABLED: "false",
     NOTIFY_TIME_PARSER: "rule",
+    CONSOLE_TEAM_DOMAIN: "", CONSOLE_AUD: "", CONSOLE_OWNER_EMAIL: "",
     LINE_CHANNEL_SECRET: "download-secret",
     LINE_CHANNEL_ACCESS_TOKEN: "unused",
     DB: {

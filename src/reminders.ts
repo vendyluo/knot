@@ -2,6 +2,7 @@ import { push } from "./line";
 import { reminderMessage, reminderListMessage, textMessage } from "./messages";
 import { NOTIFY_HELP, reminderTime, type NotifyCommand } from "./notify-command";
 import { parseNotifyWithAi } from "./notify-ai";
+import { getReminderControl } from "./reminder-control";
 import { workspaceKey } from "./storage";
 import type { Env, LineEvent, LineReplyMessage } from "./types";
 
@@ -48,13 +49,15 @@ export async function handleNotify(env: Env, event: LineEvent, command: NotifyCo
       ORDER BY CASE WHEN status IN ('pending', 'sending') THEN 0 ELSE 1 END,
       CASE WHEN status IN ('pending', 'sending') THEN due_at END ASC, id DESC LIMIT 6 OFFSET ?`)
       .bind(workspace, command.offset).all<Reminder>();
-    return reminderListMessage(rows.results.slice(0, 5), command.offset, rows.results.length > 5, env.NOTIFY_ENABLED === "true");
+    const enabled = env.NOTIFY_ENABLED === "true" && !(await getReminderControl(env.DB)).paused;
+    return reminderListMessage(rows.results.slice(0, 5), command.offset, rows.results.length > 5, enabled);
   }
   // Look up duplicates before date validation, so an old webhook returns its existing receipt.
   const existing = await env.DB.prepare("SELECT * FROM reminders WHERE source_message_id = ? AND workspace_key = ?")
     .bind(event.message!.id, workspace).first<Reminder>();
   if (existing) return reminderMessage(existing);
   if (env.NOTIFY_ENABLED !== "true") return textMessage("此自架 OA 尚未啟用提醒，未建立排程。請由管理者確認 Push 額度後啟用。");
+  if ((await getReminderControl(env.DB)).paused) return textMessage("管理者已暫停提醒，未建立排程。既有提醒仍可查看或取消。");
   if (now * 1000 - event.timestamp > GRACE * 1000) {
     return textMessage("時間已過或這則設定訊息延遲超過 1 小時，未建立提醒。請重新設定未來時間。");
   }
@@ -68,24 +71,44 @@ export async function handleNotify(env: Env, event: LineEvent, command: NotifyCo
     (workspace_key, source_message_id, destination, text, due_at, created_at, retry_key)
     SELECT ?, ?, ?, ?, ?, ?, ? WHERE
     (SELECT COUNT(*) FROM reminders WHERE workspace_key = ? AND status IN ('pending', 'sending')) < 100
+    AND EXISTS (SELECT 1 FROM reminder_control WHERE id = 1 AND paused = 0)
     ON CONFLICT(source_message_id) DO NOTHING RETURNING *`)
     .bind(workspace, event.message!.id, destination, command.text, command.dueAt, now, crypto.randomUUID(), workspace)
     .first<Reminder>();
   // Concurrent redelivery can win the insert between our first lookup and this write.
   const reminder = created ?? await env.DB.prepare("SELECT * FROM reminders WHERE source_message_id = ? AND workspace_key = ?")
     .bind(event.message!.id, workspace).first<Reminder>();
-  return reminder ? reminderMessage(reminder, Boolean(created && command.aiParsed)) : textMessage("這個聊天室已達 100 筆待提醒上限，請先取消不需要的提醒。");
+  if (reminder) return reminderMessage(reminder, Boolean(created && command.aiParsed));
+  if ((await getReminderControl(env.DB)).paused) return textMessage("管理者已暫停提醒，未建立排程。");
+  return textMessage("這個聊天室已達 100 筆待提醒上限，請先取消不需要的提醒。");
 }
 
 export async function claimReminder(db: D1Database, id: number, now: number): Promise<Reminder | null> {
   return db.prepare(`UPDATE reminders SET status = 'sending', lease_until = ?, lease_token = ?, attempts = attempts + 1,
     uncertain = CASE WHEN status = 'sending' AND last_error IS NULL THEN 1 ELSE uncertain END
     WHERE id = ? AND due_at <= ? AND due_at >= ? AND attempts < ?
+    AND EXISTS (SELECT 1 FROM reminder_control WHERE id = 1 AND paused = 0)
     AND (status = 'pending' OR (status = 'sending' AND lease_until <= ?)) RETURNING *`)
     .bind(now + LEASE, crypto.randomUUID(), id, now, now - GRACE, MAX_ATTEMPTS, now).first<Reminder>();
 }
 
 export async function runReminders(env: Env): Promise<void> {
+  const tickId = crypto.randomUUID();
+  await env.DB.prepare(`UPDATE reminder_control SET tick_id = ?, last_tick_started_at = ?,
+    last_tick_finished_at = NULL, last_tick_status = 'running' WHERE id = 1`)
+    .bind(tickId, Math.floor(Date.now() / 1000)).run();
+  try {
+    await dispatchReminders(env);
+    await env.DB.prepare(`UPDATE reminder_control SET last_tick_finished_at = ?, last_tick_status = 'completed'
+      WHERE id = 1 AND tick_id = ?`).bind(Math.floor(Date.now() / 1000), tickId).run();
+  } catch (error) {
+    await env.DB.prepare(`UPDATE reminder_control SET last_tick_finished_at = ?, last_tick_status = 'error'
+      WHERE id = 1 AND tick_id = ?`).bind(Math.floor(Date.now() / 1000), tickId).run();
+    throw error;
+  }
+}
+
+async function dispatchReminders(env: Env): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   // Bounded maintenance also runs when sending is disabled. Pending jobs expire rather than accumulate forever.
   await env.DB.prepare(`UPDATE reminders SET status = CASE WHEN attempts > 0 THEN 'unknown' ELSE 'expired' END,
@@ -95,7 +118,7 @@ export async function runReminders(env: Env): Promise<void> {
     .bind(now, now, now - GRACE, MAX_ATTEMPTS).run();
   await env.DB.prepare("DELETE FROM reminders WHERE id IN (SELECT id FROM reminders WHERE finished_at < ? LIMIT 100)")
     .bind(now - 30 * 86400).run();
-  if (env.NOTIFY_ENABLED !== "true") return;
+  if (env.NOTIFY_ENABLED !== "true" || (await getReminderControl(env.DB)).paused) return;
   const due = await env.DB.prepare(`SELECT id FROM reminders WHERE due_at <= ? AND due_at >= ? AND attempts < ?
     AND (status = 'pending' OR (status = 'sending' AND lease_until <= ?)) ORDER BY due_at, id LIMIT ?`)
     .bind(now, now - GRACE, MAX_ATTEMPTS, now, BATCH).all<{ id: number }>();
